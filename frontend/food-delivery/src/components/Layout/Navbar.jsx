@@ -378,7 +378,7 @@ const Navbar = ({ toggleCart, onOpenOrders }) => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Modal Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-gray-200 bg-slate-900 text-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-gray-200 text-black">
               <div className="flex items-center gap-2.5">
                 <div className="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl border border-emerald-500/30">
                   <IndianRupee size={22} />
@@ -387,7 +387,7 @@ const Navbar = ({ toggleCart, onOpenOrders }) => {
                   <h2 className="text-lg sm:text-xl font-extrabold">
                     Monthly Revenue Report
                   </h2>
-                  <p className="text-xs text-gray-300">
+                  <p className="text-xs text-gray-500">
                     Calculated from Menu Item Subtotal + 5% Tax (Excludes ₹40 Rider Delivery Fee)
                   </p>
                 </div>
@@ -398,7 +398,7 @@ const Navbar = ({ toggleCart, onOpenOrders }) => {
                   type="button"
                   onClick={fetchOwnerOrdersForRevenue}
                   disabled={loadingRevenue}
-                  className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-xl cursor-pointer transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-grey text-xs font-bold px-3 py-2 rounded-xl cursor-pointer transition disabled:opacity-50"
                 >
                   <RefreshCw
                     size={14}
@@ -409,7 +409,7 @@ const Navbar = ({ toggleCart, onOpenOrders }) => {
                 <button
                   type="button"
                   onClick={() => setShowRevenueModal(false)}
-                  className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full cursor-pointer"
+                  className="p-2 text-gray-500 hover:text-black hover:bg-white/10 rounded-full cursor-pointer"
                 >
                   <X size={20} />
                 </button>

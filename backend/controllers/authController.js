@@ -60,6 +60,10 @@ export const getCurrentUser = async (req, res) => {
       email: req.user.email,
       phone: req.user.phone,
       role: req.user.role,
+      isBanned: req.user.isBanned,
+      banReason: req.user.banReason,
+      cancelledOrdersCount: req.user.cancelledOrdersCount || 0,
+      dailyConsecutiveCancels: req.user.dailyConsecutiveCancels || 0,
       shop,
     });
   } catch (error) {
@@ -131,6 +135,7 @@ export const registerUser = async (req, res) => {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      isBanned: user.isBanned,
       shop,
     });
   } catch (error) {
@@ -158,6 +163,15 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
+    if (user.isBanned) {
+      clearAuthCookies(res);
+      return res.status(403).json({
+        message:
+          user.banReason ||
+          'Your account has been banned due to 5 continuous order cancellations in one day. Only the Admin can unban your account.',
+      });
+    }
+
     let shop = null;
     if (user.role === 'owner') {
       shop = await Shop.findOne({ owner: user._id }).lean();
@@ -172,6 +186,7 @@ export const loginUser = async (req, res) => {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      isBanned: user.isBanned,
       shop,
     });
   } catch (error) {
@@ -213,6 +228,15 @@ export const googleAuth = async (req, res) => {
       });
     }
 
+    if (user.isBanned) {
+      clearAuthCookies(res);
+      return res.status(403).json({
+        message:
+          user.banReason ||
+          'Your account has been banned due to 5 continuous order cancellations in one day. Only the Admin can unban your account.',
+      });
+    }
+
     let shop = null;
     if (user.role === 'owner') {
       shop = await Shop.findOne({ owner: user._id }).lean();
@@ -227,6 +251,7 @@ export const googleAuth = async (req, res) => {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      isBanned: user.isBanned,
       shop,
     });
   } catch (error) {
@@ -245,7 +270,7 @@ export const refreshAccessToken = async (req, res) => {
     const decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
 
     const user = await User.findById(decoded.id);
-    if (!user || user.refreshToken !== incomingRefreshToken) {
+    if (!user || user.refreshToken !== incomingRefreshToken || user.isBanned) {
       clearAuthCookies(res);
       return res.status(401).json({ message: 'Invalid or expired refresh token' });
     }
@@ -356,6 +381,7 @@ export const updateUserProfile = async (req, res) => {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      isBanned: user.isBanned,
       shop,
     });
   } catch (error) {

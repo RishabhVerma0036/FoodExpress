@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Navigation, CreditCard, Banknote } from 'lucide-react';
+import { MapPin, Navigation, CreditCard, Banknote, Bike } from 'lucide-react';
 import API from '../../api/axios';
 import { useCart } from '../../context/CartContext';
 import { loadRazorpay } from '../../utils/loadRazorpay';
@@ -15,7 +15,21 @@ const customerPinIcon = L.divIcon({
   iconAnchor: [18, 18],
 });
 
-// Helper to ensure address is strictly in English (removes any Hindi/Devanagari script)
+const calculateDistanceKm = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.max(0.5, Number((R * c).toFixed(1)));
+};
+
 const formatEnglishAddress = (rawText, addressObj = {}) => {
   if (addressObj && Object.keys(addressObj).length > 0) {
     const parts = [
@@ -97,16 +111,59 @@ const Checkout = () => {
     lat: 28.6139,
     lng: 77.209,
   });
+  const [shopLocation, setShopLocation] = useState({
+    lat: 28.6139,
+    lng: 77.209,
+  });
   const [locating, setLocating] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const deliveryFee = cartTotal > 0 ? 40 : 0;
+  useEffect(() => {
+    if (cartItems.length === 0) return;
+    const item = cartItems[0];
+    const directLoc = item.shopLocation || item.shop?.location;
+    if (directLoc?.lat && directLoc?.lng) {
+      setShopLocation({
+        lat: Number(directLoc.lat),
+        lng: Number(directLoc.lng),
+      });
+      return;
+    }
+
+    const primaryShopId = item.shopId || item.shop?._id || item.shop;
+    if (primaryShopId) {
+      API.get('/menu/shops')
+        .then((res) => {
+          const matched = (res.data || []).find(
+            (s) => String(s._id) === String(primaryShopId)
+          );
+          if (matched?.location?.lat && matched?.location?.lng) {
+            setShopLocation({
+              lat: Number(matched.location.lat),
+              lng: Number(matched.location.lng),
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [cartItems]);
+
+  const distanceKm = useMemo(() => {
+    if (cartTotal <= 0) return 0;
+    return calculateDistanceKm(
+      shopLocation.lat,
+      shopLocation.lng,
+      customerLocation.lat,
+      customerLocation.lng
+    );
+  }, [shopLocation.lat, shopLocation.lng, customerLocation.lat, customerLocation.lng, cartTotal]);
+
+  const deliveryFee = cartTotal > 0 ? Math.max(10, Math.round(distanceKm * 10)) : 0;
   const taxes = Math.round(cartTotal * 0.05);
   const grandTotal = cartTotal + deliveryFee + taxes;
 
-  // Fetches address strictly in English from OpenStreetMap Nominatim
   const reverseGeocodeAndFill = async (lat, lng) => {
     setCustomerLocation({ lat, lng });
     try {
@@ -196,6 +253,8 @@ const Checkout = () => {
                 shopId: primaryShopId,
                 items: cartItems,
                 totalAmount: grandTotal,
+                distanceKm,
+                deliveryFee,
                 deliveryAddress: cleanAddress,
                 customerLocation,
                 paymentMethod: 'ONLINE',
@@ -218,6 +277,8 @@ const Checkout = () => {
         shopId: primaryShopId,
         items: cartItems,
         totalAmount: grandTotal,
+        distanceKm,
+        deliveryFee,
         deliveryAddress: cleanAddress,
         customerLocation,
         paymentMethod: 'COD',
@@ -237,7 +298,6 @@ const Checkout = () => {
         <h1 className="text-2xl font-extrabold text-gray-900">Checkout</h1>
 
         <form onSubmit={handlePlaceOrder} className="space-y-6">
-          {/* Delivery Address + Interactive Map & Current Location Button */}
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="block text-sm font-bold text-gray-700">
@@ -286,13 +346,17 @@ const Checkout = () => {
                 className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
             </div>
-            <p className="text-xs text-gray-400">
-              Selected Coordinates: {customerLocation.lat.toFixed(5)},{' '}
-              {customerLocation.lng.toFixed(5)}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+              <span>
+                Selected Coordinates: {customerLocation.lat.toFixed(5)},{' '}
+                {customerLocation.lng.toFixed(5)}
+              </span>
+              <span className="font-bold text-orange-600 flex items-center gap-1">
+                <Bike size={14} /> Distance from Restaurant: {distanceKm} km (₹10/km = ₹{deliveryFee})
+              </span>
+            </div>
           </div>
 
-          {/* Payment Method as Radio Buttons */}
           <div className="space-y-2">
             <label className="block text-sm font-bold text-gray-700">
               Payment Method
@@ -350,7 +414,6 @@ const Checkout = () => {
             </div>
           </div>
 
-          {/* Bill Summary */}
           <div className="bg-gray-50 p-4 rounded-xl space-y-2 text-sm">
             <div className="flex justify-between">
               <span>Subtotal</span>
@@ -361,8 +424,8 @@ const Checkout = () => {
               <span>₹{taxes}</span>
             </div>
             <div className="flex justify-between">
-              <span>Delivery Fee</span>
-              <span>₹{deliveryFee}</span>
+              <span>Delivery Fee ({distanceKm} km × ₹10/km)</span>
+              <span className="font-semibold text-gray-900">₹{deliveryFee}</span>
             </div>
             <div className="flex justify-between font-black text-base pt-2 border-t">
               <span>Total</span>

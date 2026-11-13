@@ -10,6 +10,10 @@ import {
   Plus,
   Trash2,
   RefreshCw,
+  Ban,
+  ShieldAlert,
+  Search,
+  X,
 } from 'lucide-react';
 import API from '../../api/axios';
 
@@ -22,6 +26,7 @@ const AdminDashboard = () => {
   });
   const [activeTab, setActiveTab] = useState('vendors');
   const [newCategory, setNewCategory] = useState('');
+  const [userEmailSearch, setUserEmailSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   const fetchStats = async () => {
@@ -53,6 +58,30 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleToggleCustomerBan = async (userObj) => {
+    const nextBan = !userObj.isBanned;
+    const actionLabel = nextBan ? 'BAN' : 'UNBAN';
+    if (
+      !window.confirm(
+        `Are you sure you want to ${actionLabel} customer "${userObj.name}" (${userObj.email})?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await API.put(`/admin/users/${userObj._id}/ban`, {
+        isBanned: nextBan,
+        banReason: nextBan
+          ? `Banned by Admin due to repeated order cancellations (${userObj.cancelledOrdersCount || 0} cancelled orders).`
+          : '',
+      });
+      fetchStats();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update customer ban status');
+    }
+  };
+
   const handleAddCategory = async (e) => {
     e.preventDefault();
     if (!newCategory.trim()) return;
@@ -81,6 +110,23 @@ const AdminDashboard = () => {
     (s) => s.status === 'approved' || s.status === 'rejected'
   );
 
+  // Flagged customers: Auto-banned (5 continuous cancels in 1 day), manually banned, or 2+ cancelled orders
+  const flaggedCustomers = stats.users.filter(
+    (u) =>
+      u.role === 'customer' &&
+      (u.isBanned ||
+        Number(u.dailyConsecutiveCancels || 0) >= 2 ||
+        Number(u.cancelledOrdersCount || 0) >= 2)
+  );
+
+  // Filter Registered Users by Email Search Bar
+  const filteredUsersByEmail = stats.users.filter((u) => {
+    if (!userEmailSearch.trim()) return true;
+    return (u.email || '')
+      .toLowerCase()
+      .includes(userEmailSearch.toLowerCase().trim());
+  });
+
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
@@ -90,7 +136,7 @@ const AdminDashboard = () => {
             Admin Control Center
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Approve newly registered restaurants, manage categories, orders, and users
+            Approve newly registered restaurants, manage categories, orders, and unban/ban customers
           </p>
         </div>
         <button
@@ -175,7 +221,12 @@ const AdminDashboard = () => {
               : 'bg-white text-gray-600 hover:bg-gray-100'
           }`}
         >
-          <Users size={17} /> Users
+          <Users size={17} /> Users &amp; Customer Bans
+          {flaggedCustomers.length > 0 && (
+            <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-black">
+              {flaggedCustomers.length} Alert
+            </span>
+          )}
         </button>
       </div>
 
@@ -188,7 +239,6 @@ const AdminDashboard = () => {
           {/* TAB 1: RESTAURANT & VENDOR APPROVALS */}
           {activeTab === 'vendors' && (
             <div className="space-y-6">
-              {/* NEW SECTION BOX: Newly Registered Restaurant Owners Waiting for Approval */}
               <div className="bg-amber-50/80 border-2 border-amber-300 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
                   <div className="flex items-center gap-2.5">
@@ -265,7 +315,6 @@ const AdminDashboard = () => {
                 )}
               </div>
 
-              {/* SECTION 2: Approved & Rejected Restaurants */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
                 <h2 className="text-xl font-extrabold text-gray-900 mb-4">
                   Reviewed Restaurants (Approved &amp; Rejected)
@@ -391,6 +440,7 @@ const AdminDashboard = () => {
                       <th className="py-3 px-4">Order ID</th>
                       <th className="py-3 px-4">Customer</th>
                       <th className="py-3 px-4">Restaurant</th>
+                      <th className="py-3 px-4">Distance / Rider Fee</th>
                       <th className="py-3 px-4">Total</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">Food Rating</th>
@@ -404,6 +454,9 @@ const AdminDashboard = () => {
                         </td>
                         <td className="py-3 px-4">{o.customer?.name || 'Customer'}</td>
                         <td className="py-3 px-4">{o.shop?.name || 'Restaurant'}</td>
+                        <td className="py-3 px-4 text-xs text-gray-600">
+                          {o.distanceKm ? `${o.distanceKm} km` : '-'} • ₹{o.deliveryFee || 10}
+                        </td>
                         <td className="py-3 px-4 font-bold">₹{o.totalAmount}</td>
                         <td className="py-3 px-4 uppercase text-xs font-bold">
                           {o.status}
@@ -425,35 +478,228 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* TAB 4: USERS */}
+          {/* TAB 4: USERS & CUSTOMER BANS */}
           {activeTab === 'users' && (
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-xl font-extrabold text-gray-900 mb-4">
-                Registered Users
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
-                      <th className="py-3 px-4">Name</th>
-                      <th className="py-3 px-4">Email</th>
-                      <th className="py-3 px-4">Phone</th>
-                      <th className="py-3 px-4">Role</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {stats.users.map((u) => (
-                      <tr key={u._id}>
-                        <td className="py-3 px-4 font-bold">{u.name}</td>
-                        <td className="py-3 px-4">{u.email}</td>
-                        <td className="py-3 px-4">{u.phone || '-'}</td>
-                        <td className="py-3 px-4 uppercase text-xs font-bold">
-                          {u.role}
-                        </td>
-                      </tr>
+            <div className="space-y-6">
+              {/* Highlight Box: Auto-Banned & Repeat Canceller Customers */}
+              <div className="bg-red-50/80 border-2 border-red-300 rounded-2xl p-6 shadow-sm">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldAlert className="text-red-600" size={24} />
+                    <div>
+                      <h2 className="text-xl font-extrabold text-gray-900">
+                        Auto-Banned &amp; Repeat Order Canceller Customers
+                      </h2>
+                      <p className="text-xs text-gray-600">
+                        Customers are automatically banned after 5 continuous order cancellations in one day. Only Admin has the power to unban them.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="bg-red-200 text-red-900 text-xs font-extrabold px-3 py-1 rounded-full">
+                    {flaggedCustomers.length} Flagged Customer(s)
+                  </span>
+                </div>
+
+                {flaggedCustomers.length === 0 ? (
+                  <div className="bg-white rounded-xl p-5 text-center text-gray-500 border border-red-200 text-sm">
+                    No customers are currently banned or flagged for repeated cancellations.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {flaggedCustomers.map((u) => (
+                      <div
+                        key={u._id}
+                        className="bg-white p-4 rounded-xl border border-red-200 shadow-xs flex items-center justify-between gap-4"
+                      >
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-extrabold text-gray-900">{u.name}</h3>
+                            <span className="bg-orange-100 text-orange-800 text-xs font-black px-2.5 py-0.5 rounded-full">
+                              {u.dailyConsecutiveCancels || 0}/5 Continuous Today
+                            </span>
+                            <span className="bg-red-100 text-red-800 text-xs font-black px-2.5 py-0.5 rounded-full">
+                              {u.cancelledOrdersCount || 0} Total Cancelled
+                            </span>
+                            {u.isBanned && (
+                              <span className="bg-gray-900 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                                Banned
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {u.email} • {u.phone || 'No Phone'}
+                          </p>
+                          {u.banReason && (
+                            <p className="text-[11px] text-red-600 font-semibold mt-1">
+                              {u.banReason}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => handleToggleCustomerBan(u)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shrink-0 ${
+                            u.isBanned
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-red-600 hover:bg-red-700 text-white'
+                          }`}
+                        >
+                          <Ban size={14} />
+                          {u.isBanned ? 'Unban Customer' : 'Ban Customer'}
+                        </button>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
+              </div>
+
+              {/* All Registered Users Table + Search Bar by Email */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-gray-900">
+                      Registered Users ({filteredUsersByEmail.length})
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      Search registered users by email and manage customer bans
+                    </p>
+                  </div>
+
+                  {/* Search Registered Users by Email Bar */}
+                  <div className="relative w-full sm:w-80">
+                    <Search
+                      size={17}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search registered users by email..."
+                      value={userEmailSearch}
+                      onChange={(e) => setUserEmailSearch(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl pl-10 pr-9 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    {userEmailSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setUserEmailSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
+                        <th className="py-3 px-4">Name</th>
+                        <th className="py-3 px-4">Email</th>
+                        <th className="py-3 px-4">Phone</th>
+                        <th className="py-3 px-4">Role</th>
+                        <th className="py-3 px-4">Today&apos;s Cancel Streak</th>
+                        <th className="py-3 px-4">Total Cancelled</th>
+                        <th className="py-3 px-4">Account Status</th>
+                        <th className="py-3 px-4 text-right">Admin Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredUsersByEmail.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={8}
+                            className="py-8 text-center text-gray-500 text-sm"
+                          >
+                            No registered users found matching email &ldquo;{userEmailSearch}&rdquo;.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredUsersByEmail.map((u) => {
+                          const cancelCount = Number(u.cancelledOrdersCount || 0);
+                          const todayStreak = Number(u.dailyConsecutiveCancels || 0);
+                          return (
+                            <tr
+                              key={u._id}
+                              className={u.isBanned ? 'bg-red-50/40' : 'hover:bg-gray-50'}
+                            >
+                              <td className="py-3 px-4 font-bold text-gray-900">
+                                {u.name}
+                              </td>
+                              <td className="py-3 px-4 font-medium text-gray-800">
+                                {u.email}
+                              </td>
+                              <td className="py-3 px-4">{u.phone || '-'}</td>
+                              <td className="py-3 px-4 uppercase text-xs font-bold">
+                                {u.role}
+                              </td>
+                              <td className="py-3 px-4">
+                                {u.role === 'customer' ? (
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                      todayStreak >= 5
+                                        ? 'bg-red-600 text-white'
+                                        : todayStreak >= 3
+                                        ? 'bg-orange-100 text-orange-800'
+                                        : 'bg-gray-100 text-gray-600'
+                                    }`}
+                                  >
+                                    {todayStreak} / 5 Today
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {u.role === 'customer' ? (
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                      cancelCount >= 2
+                                        ? 'bg-red-100 text-red-800'
+                                        : cancelCount === 1
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-gray-100 text-gray-600'
+                                    }`}
+                                  >
+                                    {cancelCount} Cancelled
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {u.isBanned ? (
+                                  <span className="bg-red-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-full uppercase">
+                                    Banned
+                                  </span>
+                                ) : (
+                                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full uppercase">
+                                    Active
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                {u.role === 'customer' && (
+                                  <button
+                                    onClick={() => handleToggleCustomerBan(u)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+                                      u.isBanned
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                        : 'bg-red-600 hover:bg-red-700 text-white'
+                                    }`}
+                                  >
+                                    {u.isBanned ? 'Unban Customer' : 'Ban Customer'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

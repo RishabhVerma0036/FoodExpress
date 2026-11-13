@@ -7,12 +7,14 @@ import {
   getCategories,
   addCategory,
   deleteCategory,
+  toggleUserBan,
 } from '../controllers/adminController.js';
 
 const router = express.Router();
 
 router.get('/pending-vendors', protect, restrictTo('admin'), getPendingVendors);
 router.put('/vendor-status/:id', protect, restrictTo('admin'), updateVendorStatus);
+router.put('/users/:id/ban', protect, restrictTo('admin'), toggleUserBan);
 router.get('/stats', protect, restrictTo('admin'), getDashboardStats);
 router.get('/categories', getCategories);
 router.post('/categories', protect, restrictTo('admin'), addCategory);

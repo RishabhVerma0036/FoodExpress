@@ -14,6 +14,8 @@ const DEFAULT_CATEGORIES = [
   'Dessert',
 ];
 
+const getTodayDateKey = () => new Date().toLocaleDateString('en-CA');
+
 export const ensureDefaultCategories = async () => {
   const count = await Category.countDocuments();
   if (count === 0) {
@@ -154,6 +156,47 @@ export const updateVendorStatus = async (req, res) => {
   }
 };
 
+// Admin-only endpoint to Unban or Ban a customer
+export const toggleUserBan = async (req, res) => {
+  try {
+    const { isBanned, banReason } = req.body;
+    const user = await User.findById(req.params.id).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.role === 'admin') {
+      return res.status(400).json({ message: 'Cannot ban an admin account' });
+    }
+
+    const nextBanState = typeof isBanned === 'boolean' ? isBanned : !user.isBanned;
+    user.isBanned = nextBanState;
+
+    if (nextBanState) {
+      user.banReason =
+        banReason || 'Banned by Admin due to repeated order cancellations.';
+      user.refreshToken = '';
+    } else {
+      // Unbanned by Admin: clear ban reason and reset daily continuous cancellation counter
+      user.banReason = '';
+      user.dailyConsecutiveCancels = 0;
+      user.lastCancelDate = '';
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    return res.json({
+      message: nextBanState
+        ? `${user.name} has been banned.`
+        : `${user.name} has been unbanned by Admin and can now place orders again.`,
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 export const getDashboardStats = async (req, res) => {
   try {
     await ensureDefaultCategories();
@@ -161,7 +204,10 @@ export const getDashboardStats = async (req, res) => {
       User.find().select('-password').sort({ createdAt: -1 }).lean(),
       Shop.find().populate('owner', 'name email phone').sort({ createdAt: -1 }).lean(),
       Order.find()
-        .populate('customer', 'name email phone')
+        .populate(
+          'customer',
+          'name email phone isBanned cancelledOrdersCount dailyConsecutiveCancels lastCancelDate'
+        )
         .populate('shop', 'name')
         .populate('rider', 'name phone')
         .sort({ createdAt: -1 })
@@ -169,7 +215,33 @@ export const getDashboardStats = async (req, res) => {
       Category.find().sort({ name: 1 }).lean(),
     ]);
 
-    return res.json({ users, shops, orders, categories });
+    const todayKey = getTodayDateKey();
+    const cancelCountByCustomer = {};
+
+    for (const ord of orders) {
+      if (ord.status === 'cancelled' && ord.customer?._id) {
+        const cId = ord.customer._id.toString();
+        cancelCountByCustomer[cId] = (cancelCountByCustomer[cId] || 0) + 1;
+      }
+    }
+
+    const enrichedUsers = users.map((u) => {
+      const uid = u._id.toString();
+      const computedCancelled = Math.max(
+        Number(u.cancelledOrdersCount || 0),
+        Number(cancelCountByCustomer[uid] || 0)
+      );
+      const todayStreak =
+        u.lastCancelDate === todayKey ? Number(u.dailyConsecutiveCancels || 0) : 0;
+
+      return {
+        ...u,
+        cancelledOrdersCount: computedCancelled,
+        dailyConsecutiveCancels: todayStreak,
+      };
+    });
+
+    return res.json({ users: enrichedUsers, shops, orders, categories });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }

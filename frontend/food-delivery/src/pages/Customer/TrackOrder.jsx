@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useEffect, useState, useContext } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Star,
   XCircle,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import API from '../../api/axios';
 import LocationMap from '../../components/Maps/LocationMap';
+import { AuthContext } from '../../context/AuthContext';
 
 const cleanEnglishAddress = (text) => {
   if (!text) return 'Customer Address';
@@ -25,6 +26,9 @@ const cleanEnglishAddress = (text) => {
 
 const TrackOrder = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { logout } = useContext(AuthContext);
+
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState(5);
@@ -61,8 +65,19 @@ const TrackOrder = () => {
       const { data } = await API.put(`/orders/${id}/cancel`, {
         reason: 'Cancelled by customer',
       });
+
+      if (data?.autoBanned) {
+        alert(
+          data.message ||
+            'Your account has been automatically banned due to 5 continuous order cancellations in one day. Only the Admin can unban your account.'
+        );
+        await logout();
+        navigate('/login');
+        return;
+      }
+
       setOrder(data.order);
-      alert('Your order has been cancelled.');
+      alert(data.message || 'Your order has been cancelled.');
     } catch (err) {
       alert(err.response?.data?.message || 'Unable to cancel order');
     } finally {
@@ -99,7 +114,6 @@ const TrackOrder = () => {
     return <div className="p-8 text-center text-red-500">Order not found.</div>;
   }
 
-  // Customer can cancel only while order is pending or preparing
   const canCancel =
     order.status === 'pending' || order.status === 'preparing';
   const englishAddress = cleanEnglishAddress(order.deliveryAddress);
@@ -173,7 +187,7 @@ const TrackOrder = () => {
         </div>
       )}
 
-      {/* Live Map: Once rider accepts delivery, customer ONLY sees path between Delivery Rider and their address */}
+      {/* Live Map */}
       {order.status !== 'cancelled' && (
         <div className="space-y-2">
           {order.rider ? (
@@ -224,7 +238,7 @@ const TrackOrder = () => {
           </div>
         </div>
 
-        {/* Food Quality Rating System (Available once order is delivered) */}
+        {/* Food Quality Rating System */}
         {order.status !== 'cancelled' && (
           <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
             <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">

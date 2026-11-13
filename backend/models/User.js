@@ -4,10 +4,10 @@ import jwt from 'jsonwebtoken';
 
 const userSchema = new mongoose.Schema(
   {
-    name: { 
-      type: String, 
-      required: true, 
-      trim: true 
+    name: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
     email: {
@@ -19,14 +19,14 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
-    password: { 
-      type: String, 
-      required: true 
+    password: {
+      type: String,
+      required: true,
     },
 
-    phone: { 
-      type: String, 
-      default: '' 
+    phone: {
+      type: String,
+      default: '',
     },
 
     role: {
@@ -39,7 +39,32 @@ const userSchema = new mongoose.Schema(
     refreshToken: {
       type: String,
       default: '',
-    }
+    },
+
+    isBanned: {
+      type: Boolean,
+      default: false,
+    },
+
+    banReason: {
+      type: String,
+      default: '',
+    },
+
+    cancelledOrdersCount: {
+      type: Number,
+      default: 0,
+    },
+
+    dailyConsecutiveCancels: {
+      type: Number,
+      default: 0,
+    },
+
+    lastCancelDate: {
+      type: String,
+      default: '',
+    },
   },
   { timestamps: true }
 );

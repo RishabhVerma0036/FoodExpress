@@ -20,9 +20,9 @@ const CartDrawer = ({ isOpen, onClose }) => {
     setIsCartOpen(false);
   };
 
-  const deliveryFee = cartTotal > 0 ? 40 : 0;
+  const baseDeliveryFee = cartTotal > 0 ? 10 : 0;
   const taxes = cartTotal > 0 ? Math.round(cartTotal * 0.05) : 0;
-  const finalAmount = cartTotal + deliveryFee + taxes;
+  const estimatedTotal = cartTotal + baseDeliveryFee + taxes;
 
   return (
     <>
@@ -112,12 +112,14 @@ const CartDrawer = ({ isOpen, onClose }) => {
                 <span className="font-semibold text-gray-800">₹{taxes}</span>
               </div>
               <div className="flex justify-between">
-                <span>Delivery Fee</span>
-                <span className="font-semibold text-gray-800">₹{deliveryFee}</span>
+                <span>Delivery Fee (₹10/km)</span>
+                <span className="font-semibold text-orange-600">
+                  ₹{baseDeliveryFee}+ (By Distance)
+                </span>
               </div>
               <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t">
-                <span>Total</span>
-                <span>₹{finalAmount}</span>
+                <span>Estimated Total</span>
+                <span>₹{estimatedTotal}+</span>
               </div>
             </div>
 
@@ -128,7 +130,7 @@ const CartDrawer = ({ isOpen, onClose }) => {
               }}
               className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 rounded-xl cursor-pointer text-sm shadow-sm transition"
             >
-              Proceed to Checkout • ₹{finalAmount}
+              Proceed to Checkout
             </button>
           </div>
         )}

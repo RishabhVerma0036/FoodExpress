@@ -22,7 +22,21 @@ const cleanEnglishAddress = (text) => {
   return cleaned || 'New Delhi, Delhi, India';
 };
 
-// Helper: Calculate Rider Delivery Fee (₹40) and Menu Items Cost (e.g. ₹100)
+const calculateDistanceKm = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.max(0.5, Number((R * c).toFixed(1)));
+};
+
 const getRiderOrderAmounts = (order) => {
   let menuItemCost = 0;
   if (Array.isArray(order?.items) && order.items.length > 0) {
@@ -30,13 +44,24 @@ const getRiderOrderAmounts = (order) => {
       (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
       0
     );
-  } else {
-    const rawTotal = Number(order?.totalAmount) || 0;
-    menuItemCost = rawTotal > 40 ? Math.round((rawTotal - 40) / 1.05) : rawTotal;
   }
 
-  const deliveryFee = 40;
-  return { deliveryFee, menuItemCost };
+  const shopLat = Number(order?.shop?.location?.lat) || 28.6139;
+  const shopLng = Number(order?.shop?.location?.lng) || 77.209;
+  const custLat = Number(order?.customerLocation?.lat) || 28.625;
+  const custLng = Number(order?.customerLocation?.lng) || 77.215;
+
+  const distanceKm =
+    order?.distanceKm && Number(order.distanceKm) > 0
+      ? Number(order.distanceKm)
+      : calculateDistanceKm(shopLat, shopLng, custLat, custLng);
+
+  const deliveryFee =
+    order?.deliveryFee && Number(order.deliveryFee) > 0
+      ? Number(order.deliveryFee)
+      : Math.max(10, Math.round(distanceKm * 10));
+
+  return { distanceKm, deliveryFee, menuItemCost };
 };
 
 const DeliveryDashboard = () => {
@@ -194,7 +219,7 @@ const DeliveryDashboard = () => {
               Delivery Rider Dashboard
             </h1>
             <p className="text-sm text-gray-500">
-              Accept Ready orders, navigate to the restaurant, verify the pickup code, then deliver to the customer
+              Earn ₹10 per km between restaurant &amp; customer • Accept Ready orders, verify pickup code, and deliver
             </p>
           </div>
         </div>
@@ -227,7 +252,7 @@ const DeliveryDashboard = () => {
             const isPickedUp = order.status === 'out for delivery';
             const isDelivered = order.status === 'delivered';
             const englishCustomerAddress = cleanEnglishAddress(order.deliveryAddress);
-            const { deliveryFee, menuItemCost } = getRiderOrderAmounts(order);
+            const { distanceKm, deliveryFee, menuItemCost } = getRiderOrderAmounts(order);
 
             return (
               <div
@@ -248,7 +273,8 @@ const DeliveryDashboard = () => {
                     <p className="text-sm font-semibold text-gray-800 mt-2 flex items-center gap-1">
                       <MapPin size={15} className="text-emerald-600 shrink-0" />
                       <span>
-                        Customer name: {order.customer?.name || 'Customer'} | Phone: {order.customer?.phone || 'N/A'} | Address: {englishCustomerAddress}
+                        Customer name: {order.customer?.name || 'Customer'} | Phone:{' '}
+                        {order.customer?.phone || 'N/A'} | Address: {englishCustomerAddress}
                       </span>
                     </p>
                   </div>
@@ -265,10 +291,13 @@ const DeliveryDashboard = () => {
                     >
                       {order.status}
                     </span>
-                    <p className="text-xl font-black text-gray-900 mt-1">
+                    <p className="text-xl font-black text-emerald-700 mt-1">
                       ₹{deliveryFee}
                     </p>
-                    <p className="text-xs font-bold text-gray-500 mt-0.5">
+                    <p className="text-[11px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full inline-block mt-0.5">
+                      Distance: {distanceKm} km × ₹10/km
+                    </p>
+                    <p className="text-xs font-bold text-gray-500 mt-1">
                       Menu Item Cost: ₹{menuItemCost}
                     </p>
                   </div>
@@ -279,7 +308,7 @@ const DeliveryDashboard = () => {
                     onClick={() => handleAcceptDelivery(order._id)}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow cursor-pointer transition flex items-center justify-center gap-2"
                   >
-                    <Navigation size={18} /> Accept Delivery
+                    <Navigation size={18} /> Accept Delivery (Earn ₹{deliveryFee} • {distanceKm} km)
                   </button>
                 )}
 

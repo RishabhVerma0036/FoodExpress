@@ -16,6 +16,15 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Not authorized, user no longer exists' });
     }
 
+    if (user.isBanned) {
+      return res.status(403).json({
+        message:
+          user.banReason ||
+          'Your account has been banned. Only the Admin can unban your account.',
+        isBanned: true,
+      });
+    }
+
     req.user = user;
     return next();
   } catch (error) {

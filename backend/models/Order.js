@@ -2,92 +2,105 @@ import mongoose from 'mongoose';
 
 const orderSchema = new mongoose.Schema(
   {
-    customer: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: 'User', required: true 
+    customer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
     },
 
-    shop: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: 'Shop', 
-      required: true 
+    shop: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shop',
+      required: true,
     },
 
-    rider: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: 'User', 
-      default: null 
+    rider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
 
     items: [
       {
-        menuItem: { 
-          type: mongoose.Schema.Types.ObjectId, 
-          ref: 'MenuItem' 
-        },
-        shop: { 
+        menuItem: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: 'Shop' 
+          ref: 'MenuItem',
         },
-        shopName: { 
-          type: String, 
-          default: '' 
+        shop: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Shop',
         },
-        name: { 
-          type: String, 
-          required: true 
+        shopName: {
+          type: String,
+          default: '',
         },
-        price: { 
-          type: Number, 
-          required: true
+        name: {
+          type: String,
+          required: true,
         },
-        quantity: { 
-          type: Number, 
-          default: 1, 
-          min: 1 
+        price: {
+          type: Number,
+          required: true,
         },
-        image: { 
-          type: String, 
-          default: '' 
+        quantity: {
+          type: Number,
+          default: 1,
+          min: 1,
         },
-        isVeg: { 
-          type: Boolean, 
-          default: true 
-        }
-      }
+        image: {
+          type: String,
+          default: '',
+        },
+        isVeg: {
+          type: Boolean,
+          default: true,
+        },
+      },
     ],
 
     totalAmount: {
-      type: Number, 
-      required: true, 
-      min: 0 
+      type: Number,
+      required: true,
+      min: 0,
     },
 
-    deliveryAddress: { 
-      type: String, 
-      required: true 
+    distanceKm: {
+      type: Number,
+      default: 1,
+      min: 0,
+    },
+
+    deliveryFee: {
+      type: Number,
+      default: 10,
+      min: 0,
+    },
+
+    deliveryAddress: {
+      type: String,
+      required: true,
     },
 
     customerLocation: {
-      lat: { 
-        type: Number, 
-        default: 28.625 
+      lat: {
+        type: Number,
+        default: 28.625,
       },
-      lng: { 
-        type: Number, 
-        default: 77.215 
-      }
+      lng: {
+        type: Number,
+        default: 77.215,
+      },
     },
 
     riderLocation: {
-      lat: { 
-        type: Number, 
-        default: null 
+      lat: {
+        type: Number,
+        default: null,
       },
-      lng: { 
-        type: Number, 
-        default: null 
-      }
+      lng: {
+        type: Number,
+        default: null,
+      },
     },
 
     status: {
@@ -108,47 +121,47 @@ const orderSchema = new mongoose.Schema(
       default: 'pending',
     },
 
-    razorpayOrderId: { 
-      type: String, 
-      default: '' 
+    razorpayOrderId: {
+      type: String,
+      default: '',
     },
 
-    razorpayPaymentId: { 
-      type: String, 
-      default: '' 
+    razorpayPaymentId: {
+      type: String,
+      default: '',
     },
 
-    riderOtp: { 
-      type: String, 
-      default: '' 
+    riderOtp: {
+      type: String,
+      default: '',
     },
 
-    customerOtp: { 
-      type: String, 
-      default: '' 
+    customerOtp: {
+      type: String,
+      default: '',
     },
 
-    rating: { 
-      type: Number, 
-      min: 1, 
-      max: 5, 
-      default: null 
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
     },
 
-    review: { 
-      type: String, 
-      default: '' 
+    review: {
+      type: String,
+      default: '',
     },
 
-    ratedAt: { 
-      type: Date, 
-      default: null 
+    ratedAt: {
+      type: Date,
+      default: null,
     },
 
-    cancelReason: { 
-      type: String, 
-      default: '' 
-    }
+    cancelReason: {
+      type: String,
+      default: '',
+    },
   },
   { timestamps: true }
 );

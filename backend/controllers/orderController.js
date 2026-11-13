@@ -1,11 +1,42 @@
 import Order from '../models/Order.js';
 import Shop from '../models/Shop.js';
 import MenuItem from '../models/MenuItem.js';
+import User from '../models/User.js';
 import razorpay from '../config/razorpay.js';
 import crypto from 'crypto';
 
 const generateOTP = () => {
   return Math.floor(1000 + Math.random() * 9000).toString();
+};
+
+const getTodayDateKey = () => new Date().toLocaleDateString('en-CA');
+
+const clearCustomerAuthCookies = (res) => {
+  const isSecure = (process.env.CORS_ORIGIN || '').startsWith('https://');
+  const options = {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: isSecure ? 'none' : 'lax',
+  };
+  res.clearCookie('accessToken', options);
+  res.clearCookie('refreshToken', options);
+};
+
+// Haversine formula to calculate distance in km between Restaurant & Customer
+const calculateDistanceKm = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const rawKm = R * c;
+  return Math.max(0.5, Number(rawKm.toFixed(1)));
 };
 
 export const createRazorpayOrder = async (req, res) => {
@@ -32,10 +63,17 @@ export const createRazorpayOrder = async (req, res) => {
 
 export const createOrder = async (req, res) => {
   try {
+    if (req.user?.isBanned) {
+      return res.status(403).json({
+        message:
+          req.user.banReason ||
+          'Your account has been banned due to 5 continuous order cancellations in one day. Only the Admin can unban your account.',
+      });
+    }
+
     const {
       shopId,
       items,
-      totalAmount,
       deliveryAddress,
       customerLocation,
       paymentMethod,
@@ -130,14 +168,29 @@ export const createOrder = async (req, res) => {
     const customerOtp = generateOTP();
     const riderOtp = generateOTP();
 
-    let calculatedTotal = 0;
-    if (totalAmount !== undefined) {
-      calculatedTotal = Number(totalAmount);
-    } else {
-      for (const item of enrichedItems) {
-        calculatedTotal += item.price * item.quantity;
-      }
+    const parsedCustomerLocation = {
+      lat: Number(customerLocation?.lat ?? deliveryAddress?.lat) || 28.6139,
+      lng: Number(customerLocation?.lng ?? deliveryAddress?.lng) || 77.209,
+    };
+
+    const shopLat = Number(targetShop.location?.lat) || 28.6139;
+    const shopLng = Number(targetShop.location?.lng) || 77.209;
+
+    // Calculate distance (km) & Rider Delivery Fee at ₹10 per km (minimum ₹10)
+    const distanceKm = calculateDistanceKm(
+      shopLat,
+      shopLng,
+      parsedCustomerLocation.lat,
+      parsedCustomerLocation.lng
+    );
+    const deliveryFee = Math.max(10, Math.round(distanceKm * 10));
+
+    let itemsSubtotal = 0;
+    for (const item of enrichedItems) {
+      itemsSubtotal += item.price * item.quantity;
     }
+    const taxes = Math.round(itemsSubtotal * 0.05);
+    const calculatedTotal = itemsSubtotal + taxes + deliveryFee;
 
     let formattedAddress = 'Customer Address';
     if (typeof deliveryAddress === 'object' && deliveryAddress !== null) {
@@ -151,11 +204,10 @@ export const createOrder = async (req, res) => {
       shop: uniqueShopIds[0],
       items: enrichedItems,
       totalAmount: calculatedTotal,
+      distanceKm,
+      deliveryFee,
       deliveryAddress: formattedAddress,
-      customerLocation: {
-        lat: Number(customerLocation?.lat ?? deliveryAddress?.lat) || 28.6139,
-        lng: Number(customerLocation?.lng ?? deliveryAddress?.lng) || 77.209,
-      },
+      customerLocation: parsedCustomerLocation,
       status: 'pending',
       paymentMethod: paymentMethod || (razorpayPaymentId ? 'ONLINE' : 'COD'),
       paymentStatus: razorpayPaymentId ? 'paid' : 'pending',
@@ -307,7 +359,60 @@ export const cancelOrderByCustomer = async (req, res) => {
     order.cancelReason = req.body?.reason || 'Cancelled by customer';
     await order.save();
 
-    return res.status(200).json({ message: 'Order cancelled successfully', order });
+    let autoBanned = false;
+    let currentStreak = 0;
+
+    // Update customer cancellation counters & auto-ban after 5 continuous cancellations in 1 day
+    const customerUser = await User.findById(order.customer._id);
+    if (customerUser && customerUser.role === 'customer') {
+      const todayKey = getTodayDateKey();
+
+      if (customerUser.lastCancelDate === todayKey) {
+        customerUser.dailyConsecutiveCancels =
+          Number(customerUser.dailyConsecutiveCancels || 0) + 1;
+      } else {
+        customerUser.lastCancelDate = todayKey;
+        customerUser.dailyConsecutiveCancels = 1;
+      }
+
+      customerUser.cancelledOrdersCount =
+        Number(customerUser.cancelledOrdersCount || 0) + 1;
+
+      currentStreak = customerUser.dailyConsecutiveCancels;
+
+      if (customerUser.dailyConsecutiveCancels >= 5) {
+        customerUser.isBanned = true;
+        customerUser.banReason =
+          'Automatically banned: You cancelled 5 orders continuously in one day. Only the Admin can unban your account.';
+        customerUser.refreshToken = '';
+        autoBanned = true;
+      }
+
+      await customerUser.save({ validateBeforeSave: false });
+    }
+
+    if (autoBanned && isCustomerOwner) {
+      clearCustomerAuthCookies(res);
+      return res.status(200).json({
+        message:
+          'Order cancelled. Your account has been automatically banned due to 5 continuous order cancellations in one day. Only the Admin can unban your account.',
+        autoBanned: true,
+        dailyConsecutiveCancels: currentStreak,
+        order,
+      });
+    }
+
+    const remainingBeforeBan = Math.max(0, 5 - currentStreak);
+
+    return res.status(200).json({
+      message:
+        currentStreak >= 3
+          ? `Order cancelled (${currentStreak}/5 continuous cancellations today. ${remainingBeforeBan} more today will automatically ban your account).`
+          : 'Order cancelled successfully',
+      autoBanned: false,
+      dailyConsecutiveCancels: currentStreak,
+      order,
+    });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -547,6 +652,14 @@ export const verifyDeliveryOtpByRider = async (req, res) => {
     }
 
     await order.save();
+
+    // Reset continuous daily cancellation streak when an order is successfully delivered
+    if (order.customer) {
+      await User.findByIdAndUpdate(order.customer, {
+        $set: { dailyConsecutiveCancels: 0 },
+      });
+    }
+
     return res.status(200).json({ message: 'Order Delivered.', order });
   } catch (error) {
     return res.status(500).json({ message: error.message });
